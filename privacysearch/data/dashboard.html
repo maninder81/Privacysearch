@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PrivacySearch</title>
+<style>
+:root { --bg:#f7f7f5; --fg:#1d1d1b; --muted:#6b6b66; --card:#fff; --line:#e3e3de; --accent:#2f5d50;
+        --crit:#a3261f; --high:#c25e00; --med:#9a7b00; --low:#4b6b3d; }
+@media (prefers-color-scheme: dark) { :root { --bg:#151514; --fg:#ececea; --muted:#9a9a94; --card:#1f1f1d;
+        --line:#33332f; --accent:#7fb8a6; --crit:#ff7b72; --high:#f0a35e; --med:#e3c55a; --low:#9ccc84; } }
+* { box-sizing:border-box; }
+body { margin:0; font:15px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+main { max-width:1000px; margin:0 auto; padding:24px 16px; }
+h1 { font-size:22px; margin:0 0 4px; } h2 { font-size:17px; margin:24px 0 8px; }
+.muted { color:var(--muted); }
+.card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin:12px 0; }
+.row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+.score { font-size:40px; font-weight:600; color:var(--accent); font-variant-numeric:tabular-nums; }
+input { flex:1; min-width:200px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); }
+button { padding:8px 14px; border:0; border-radius:6px; background:var(--accent); color:var(--card); cursor:pointer; }
+table { width:100%; border-collapse:collapse; font-size:14px; }
+th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+.table-wrap { overflow-x:auto; }
+.sev { font-weight:600; text-transform:capitalize; }
+.critical { color:var(--crit); } .high { color:var(--high); } .medium { color:var(--med); } .low { color:var(--low); }
+</style>
+</head>
+<body>
+<main>
+  <h1>PrivacySearch</h1>
+  <p class="muted">Your exposure, removals and Coverage Score. The API key stays in this tab only.</p>
+  <div class="card row">
+    <input id="key" type="password" placeholder="API key with profiles:read (ak_…)" autocomplete="off">
+    <button id="load">Load</button>
+  </div>
+  <div id="out"></div>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+try { $("#key").value = sessionStorage.getItem("ps_key") || ""; } catch (e) {}
+async function api(path) {
+  const r = await fetch(path, { headers: { Authorization: "Bearer " + $("#key").value } });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error ? j.error.message : r.statusText);
+  return j;
+}
+async function load() {
+  try { sessionStorage.setItem("ps_key", $("#key").value); } catch (e) {}
+  const out = $("#out");
+  out.innerHTML = "<p class='muted'>Loading…</p>";
+  try {
+    const { data } = await api("/v1/profiles");
+    if (!data.length) { out.innerHTML = "<p class='muted'>No protected profiles yet. Add one with <code>privacysearch profile add</code>.</p>"; return; }
+    let html = "";
+    for (const p of data) {
+      const [exp, rem] = await Promise.all([api(`/v1/profiles/${p.id}/exposures`), api(`/v1/profiles/${p.id}/removals`)]);
+      html += `<div class="card"><div class="row"><div><div class="score">${p.coverage_score}</div><div class="muted">Coverage Score</div></div>
+        <div><h2 style="margin:0">${esc(p.label)}</h2><div class="muted">Exposure level ${esc(p.exposure_level)} · ${p.open_exposures} open · ${p.resolved_exposures} resolved · Autopilot ${p.autopilot ? "on" : "off"}</div></div></div>
+        <h2>Exposures</h2><div class="table-wrap"><table><tr><th>Source</th><th>Data</th><th>Severity</th><th>Status</th><th>Last seen</th></tr>
+        ${exp.data.map(e => `<tr><td>${e.url ? `<a href="${esc(e.url)}" rel="noreferrer" target="_blank">${esc(e.source_name)}</a>` : esc(e.source_name)}</td>
+          <td>${esc(e.data_types.join(", "))}</td><td class="sev ${e.severity}">${e.severity}</td><td>${esc(e.status.replace(/_/g," "))}</td><td>${esc(e.last_seen.slice(0,10))}</td></tr>`).join("")}
+        </table></div>
+        <h2>Removals</h2><div class="table-wrap"><table><tr><th>Source</th><th>Basis</th><th>Method</th><th>Status</th><th>Attempts</th><th>Next check</th></tr>
+        ${rem.data.map(r => `<tr><td>${esc(r.source_id)}</td><td>${esc(r.legal_basis)}</td><td>${esc(r.method)}</td><td>${esc(r.status.replace(/_/g," "))}</td><td>${r.attempts}</td><td>${esc((r.next_check_at||"").slice(0,10))}</td></tr>`).join("")}
+        </table></div></div>`;
+    }
+    out.innerHTML = html;
+  } catch (e) { out.innerHTML = `<p class="critical">${esc(e.message)}</p>`; }
+}
+$("#load").addEventListener("click", load);
+</script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "privacysearch"
+version = "0.1.0"
+description = "Self-hosted personal data exposure discovery, removal and monitoring"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["cryptography>=41"]
+
+[project.scripts]
+privacysearch = "privacysearch.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["privacysearch*"]
+
+[tool.setuptools.package-data]
+privacysearch = ["data/*.json", "data/*.html"]
